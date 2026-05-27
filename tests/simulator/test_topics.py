@@ -25,14 +25,14 @@ def _make_reading():
 def test_topic_for_telemetry_matches_brief_format():
     r = _make_reading()
     topic = topic_for(r, root="industrial")
-    assert topic == "industrial/kuantan-plant/utilities/pump-p-101/power_kw"
+    assert topic == "industrial/kuantan-plant/pump-house/p-101/power_kw"
     assert TOPIC_RE.match(topic)
 
 
 def test_topic_for_status_uses_underscore_slot():
     asset = default_assets()[0]
     topic = asset_channel_topic(asset, root="industrial", channel="status")
-    assert topic == "industrial/kuantan-plant/utilities/pump-p-101/_status"
+    assert topic == "industrial/kuantan-plant/pump-house/p-101/_status"
     assert TOPIC_RE.match(topic)
 
 

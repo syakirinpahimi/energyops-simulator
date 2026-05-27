@@ -135,6 +135,34 @@ export default function LoginPage() {
           </div>
         )}
 
+        <div className="mt-5 border-t border-steel-700 pt-4">
+          <div className="mb-2 text-[11px] uppercase tracking-wider text-steel-400">
+            Demo accounts · click to fill
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {DEMO_USERS.map((u) => (
+              <button
+                key={`hint-${u.email}`}
+                type="button"
+                onClick={() => {
+                  setEmail(u.email);
+                  setPassword(u.password);
+                }}
+                className="flex flex-col items-start rounded-sm border border-steel-600 px-2 py-1.5 text-left text-[11px] text-steel-200 hover:bg-steel-700"
+              >
+                <span className="font-mono uppercase tracking-wider text-accent">
+                  {u.role}
+                </span>
+                <span className="font-mono text-steel-400">{u.email}</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-steel-500">
+            Default passwords come from <code>.env.example</code>. Rotate
+            them in <code>.env</code> before any real demo.
+          </p>
+        </div>
+
         <p className="mt-4 text-[11px] text-steel-500">
           Operator credentials log alarm acknowledgements to the audit log.
         </p>

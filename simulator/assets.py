@@ -161,12 +161,15 @@ def default_assets() -> List[Asset]:
 
 # Mapping of asset_slug -> list of anomaly tags this asset can express.
 # Tags are short, machine-readable strings the generator uses to bias output.
+# Keys MUST match the slugs returned by ``default_assets()`` (and the seed
+# in ``backend/scripts/seed.py``); a mismatch silently disables anomaly
+# injection because the generator falls through to the empty default.
 ANOMALY_CATALOGUE: Dict[str, List[str]] = {
-    "pump-p-101":            ["vibration_spike"],
-    "air-compressor-c-201":  ["high_temperature"],
-    "hvac-chiller-ch-1":     ["high_power_draw"],
-    "solar-inverter-inv-01": ["low_output_daytime"],
-    "main-grid-meter-gm-01": ["voltage_dip"],
+    "p-101":  ["vibration_spike"],
+    "c-201":  ["high_temperature"],
+    "ch-1":   ["high_power_draw"],
+    "inv-01": ["low_output_daytime"],
+    "gm-01":  ["voltage_dip"],
 }
 
 

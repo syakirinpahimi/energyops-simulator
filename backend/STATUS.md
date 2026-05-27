@@ -82,9 +82,10 @@ The 17 skipped tests need a reachable Postgres + seed; they auto-run when
 
 ## TODO (next session)
 
-- `TODO(backend)`: wire the existing `services.mqtt_consumer.MqttConsumer`
-  into `app.main.lifespan`. Pass `broadcast=hub.broadcast` so MQTT
-  telemetry / alarm events fan out to WS clients in real time.
+- `DONE`: `services.mqtt_consumer.MqttConsumer` is wired into
+  `app.main.lifespan` and receives `broadcast=hub.broadcast`. Toggle with
+  `MQTT_ENABLED=0` to skip the consumer (used by unit tests). Lifespan is
+  best-effort: a missing broker logs a warning and the API still serves.
 - `TODO(backend)`: WS subscribe/unsubscribe filtering. The hub currently
   broadcasts to everyone; the contract supports per-asset/per-site filters.
 - `TODO(backend)`: write-path endpoints (`POST /sites`, `POST /assets`,

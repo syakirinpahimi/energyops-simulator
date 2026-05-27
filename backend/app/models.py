@@ -9,7 +9,7 @@ Conventions:
   - Enums are real Postgres enums (created in the initial migration).
 
 Note: TimescaleDB-specific things (hypertable conversion, continuous
-aggregates, retention) live in the migration, not here � SQLAlchemy doesn't
+aggregates, retention) live in the migration, not here -- SQLAlchemy doesn't
 need to know about them.
 """
 
@@ -169,7 +169,7 @@ class Sensor(Base):
         nullable=False,
     )
     metric = Column(String, nullable=False)  # 'power_kw','temperature_c',...
-    unit = Column(String, nullable=False)  # 'kW','�C','V'
+    unit = Column(String, nullable=False)  # e.g. 'kW', 'C', 'V', 'mm/s'
     description = Column(Text, nullable=True)
     min_value = Column(Numeric, nullable=True)
     max_value = Column(Numeric, nullable=True)

@@ -34,21 +34,21 @@ def _find(asset_slug: str):
 def test_default_assets_has_expected_five():
     slugs = [a.asset_slug for a in default_assets()]
     assert slugs == [
-        "pump-p-101",
-        "air-compressor-c-201",
-        "hvac-chiller-ch-1",
-        "solar-inverter-inv-01",
-        "main-grid-meter-gm-01",
+        "p-101",
+        "c-201",
+        "ch-1",
+        "inv-01",
+        "gm-01",
     ]
 
 
 def test_each_asset_has_expected_sensors():
     sensors_by_asset = {a.asset_slug: [s.metric for s in a.sensors] for a in default_assets()}
-    assert sensors_by_asset["pump-p-101"] == ["power_kw", "vibration_mm_s", "flow_m3_h", "pressure_bar"]
-    assert sensors_by_asset["air-compressor-c-201"] == ["power_kw", "pressure_bar", "temperature_c"]
-    assert sensors_by_asset["hvac-chiller-ch-1"] == ["power_kw", "temperature_c", "energy_kwh"]
-    assert sensors_by_asset["solar-inverter-inv-01"] == ["power_kw", "energy_kwh", "voltage_v", "current_a"]
-    assert sensors_by_asset["main-grid-meter-gm-01"] == ["power_kw", "energy_kwh", "voltage_v", "current_a"]
+    assert sensors_by_asset["p-101"] == ["power_kw", "vibration_mm_s", "flow_m3_h", "pressure_bar"]
+    assert sensors_by_asset["c-201"] == ["power_kw", "pressure_bar", "temperature_c"]
+    assert sensors_by_asset["ch-1"] == ["power_kw", "temperature_c", "energy_kwh"]
+    assert sensors_by_asset["inv-01"] == ["power_kw", "energy_kwh", "voltage_v", "current_a"]
+    assert sensors_by_asset["gm-01"] == ["power_kw", "energy_kwh", "voltage_v", "current_a"]
 
 
 def test_step_returns_one_reading_per_sensor(fixed_time):
@@ -63,7 +63,7 @@ def test_step_returns_one_reading_per_sensor(fixed_time):
 
 
 def test_pump_normal_values_within_reasonable_range(fixed_time):
-    asset = _find("pump-p-101")
+    asset = _find("p-101")
     rng = random.Random(123)
     state = AssetState()
     # Run a handful of ticks so drift settles.
@@ -77,7 +77,7 @@ def test_pump_normal_values_within_reasonable_range(fixed_time):
 
 
 def test_step_is_deterministic_with_seed(fixed_time):
-    asset = _find("hvac-chiller-ch-1")
+    asset = _find("ch-1")
     rng_a = random.Random(7)
     rng_b = random.Random(7)
     state_a = AssetState()
@@ -95,7 +95,7 @@ def test_anomaly_catalogue_covers_all_demo_assets():
 
 
 def test_chiller_energy_is_monotonic(fixed_time):
-    asset = _find("hvac-chiller-ch-1")
+    asset = _find("ch-1")
     rng = random.Random(0)
     state = AssetState()
     last = -1.0

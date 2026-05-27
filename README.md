@@ -198,18 +198,41 @@ docker compose down            # stop containers, keep volumes
 docker compose down -v         # also drop the postgres + mqtt volumes
 ```
 
+### Windows / PowerShell
+
+`make` is not on the default Windows PATH. Use either raw
+`docker compose` commands or the bundled PowerShell helpers under
+`demo/`:
+
+```powershell
+# raw compose (works everywhere)
+docker compose up --build
+docker compose down
+
+# helper scripts (mirror `make demo` and `make reset-db`)
+pwsh -File demo/up.ps1       # build, start, wait for health, seed
+pwsh -File demo/reset.ps1    # wipe DB, re-seed, restart simulator
+```
+
+The `Makefile` is a thin convenience wrapper for macOS / Linux. Every
+target maps to a `docker compose` command you can run directly, so
+nothing in this project requires `make`.
+
 ## Demo accounts
 
-All passwords come from `.env.example`. Change them in `.env` before any
-real demo.
+The seed script reads emails and passwords from environment variables. The
+defaults below come straight from `.env.example`; rotate them in `.env`
+before any real demo.
 
-| Email                    | Role     | What they can do                              |
-|--------------------------|----------|-----------------------------------------------|
-| `admin@example.com`      | admin    | everything + user management                  |
-| `manager@example.com`    | manager  | hierarchy edits, reports, ack + resolve       |
-| `engineer@example.com`   | engineer | resolve alarms, edit assets, view audit log   |
-| `operator@example.com`   | operator | view dashboards, acknowledge alarms           |
+| Email                       | Default password   | Role     | What they can do                              |
+|-----------------------------|--------------------|----------|-----------------------------------------------|
+| `admin@energyops.local`     | `Admin#12345`      | admin    | everything + user management                  |
+| `manager@energyops.local`   | `Manager#12345`    | manager  | hierarchy edits, reports, ack + resolve       |
+| `engineer@energyops.local`  | `Engineer#12345`   | engineer | resolve alarms, edit assets, view audit log   |
+| `operator@energyops.local`  | `Operator#12345`   | operator | view dashboards, acknowledge alarms           |
 
+The login page pre-fills the operator credentials, so the fastest
+recruiter path is `make up && make seed` followed by clicking **Sign in**.
 The full role-permission matrix lives in `docs/API_CONTRACT.md`.
 
 ## Demo scenario
@@ -314,14 +337,14 @@ message.
 industrial/<site_slug>/<area_slug>/<asset_slug>/<sensor_slug>
 ```
 
-Examples:
+Examples (matching the seed in `backend/scripts/seed.py`):
 
 ```
-industrial/kuantan-plant/utilities/pump-p-101/vibration_mm_s
-industrial/kuantan-plant/compressor-bay/air-compressor-c-201/temperature_c
-industrial/kl-data-centre/cooling/hvac-chiller-ch-1/power_kw
-industrial/johor-solar/inverter-row-a/solar-inverter-inv-01/energy_kwh
-industrial/kuantan-plant/substation/main-grid-meter-gm-01/voltage_v
+industrial/kuantan-plant/pump-house/p-101/vibration_mm_s
+industrial/kuantan-plant/utilities/c-201/temperature_c
+industrial/kl-data-centre/chiller-plant/ch-1/power_kw
+industrial/johor-solar-farm/solar-inverter-field/inv-01/energy_kwh
+industrial/kuantan-plant/utilities/gm-01/voltage_v
 ```
 
 Reserved per-asset channels reuse the sensor slot with an underscore
@@ -407,8 +430,10 @@ energyops-simulator/
 
 ## Make targets
 
-A small `Makefile` wraps the most useful compose flows. Run `make help`
-to see the list.
+A small `Makefile` wraps the most useful compose flows for macOS / Linux.
+Run `make help` to see the list. Windows users can use the
+PowerShell helpers in [Quick start › Windows / PowerShell](#windows--powershell)
+or call `docker compose` directly; nothing in this repo requires `make`.
 
 | Target           | What it does                                         |
 |------------------|------------------------------------------------------|
@@ -467,17 +492,20 @@ The seed has not been run yet. Run `make seed` (or `docker compose exec
 backend python -m app.seed`).
 
 **Frontend shows mock data**
-The browser bundle has `NEXT_PUBLIC_USE_MOCKS=1` baked in. Rebuild the
-image with the env var set to `0`:
+The Docker demo always runs against live backend data
+(`NEXT_PUBLIC_USE_MOCKS=0` in the compose stack). If you see mocks, you
+are most likely running `npm run dev` outside docker with a local
+`frontend/.env.local` that opts into mocks. That file is gitignored;
+copy `frontend/.env.example` to `frontend/.env.local` and leave
+`NEXT_PUBLIC_USE_MOCKS=0`, or set it to `1` only when you intentionally
+want offline UI work before the backend is up.
+
+If a built image somehow has mocks baked in, rebuild without cache:
 
 ```bash
 docker compose build --no-cache frontend
 docker compose up -d frontend
 ```
-
-Make sure your local `frontend/.env.local` doesn't override
-`NEXT_PUBLIC_USE_MOCKS=1` if you are running `npm run dev` outside
-docker.
 
 **Simulator publishes nothing**
 Check that mosquitto is healthy:

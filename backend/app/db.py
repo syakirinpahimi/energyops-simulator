@@ -8,7 +8,7 @@ This module owns:
   - the `SessionLocal` factory
   - the declarative `Base` class
 
-It does NOT own model definitions � those live in `app/models.py`.
+It does NOT own model definitions -- those live in `app/models.py`.
 """
 
 from __future__ import annotations
