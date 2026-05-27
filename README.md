@@ -39,8 +39,7 @@ is being emulated.
 - [Make targets](#make-targets)
 - [Recruiter talking points](#recruiter-talking-points)
 - [Troubleshooting](#troubleshooting)
-- [Known limitations](#known-limitations)
-- [Future improvements](#future-improvements)
+- [Known limitations and production roadmap](#known-limitations-and-production-roadmap)
 - [License](#license)
 
 ---
@@ -252,7 +251,7 @@ mounted at the bare paths for convenience. Full schemas live in
 | POST   | `/alarms/{id}/acknowledge`               | operator+    | writes audit row                         |
 | POST   | `/alarms/{id}/resolve`                   | engineer+    |                                          |
 | GET    | `/reports/energy/summary`                | manager+     | KPI cards JSON                           |
-| GET    | `/reports/energy.csv`                    | manager+     | streamed CSV                             |
+| GET    | `/reports/energy.csv`                    | manager+     | streamed CSV, capped at 100k rows        |
 | GET    | `/reports/energy.pdf`                    | manager+     | streamed PDF                             |
 | GET    | `/audit-log`                             | engineer+    | filterable + paginated                   |
 | WS     | `/ws/telemetry?token=<jwt>`              | bearer (qs)  | live telemetry / status / alarm events   |
@@ -264,6 +263,13 @@ Errors use a single envelope:
 ```
 
 OpenAPI is served at `/openapi.json` and Swagger UI at `/docs`.
+
+> CSV exports are capped at 100,000 rows. The response always carries
+> `X-Report-Truncated: true|false`, plus `X-Report-Row-Limit: 100000`
+> when the cap was hit. For large windows, narrow the export with
+> `start` / `end` and the `site_id` / `asset_id` filters, or use the
+> PDF report (no row cap; aggregates instead). See
+> [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md#csv-export-row-cap).
 
 ## Database overview
 
@@ -491,39 +497,66 @@ The token is missing or expired. The frontend already retries on 401,
 but if you are using the WS directly, log in again to mint a fresh
 token.
 
-## Known limitations
+## Known limitations and production roadmap
 
-- **MQTT consumer is implemented but not yet wired into the FastAPI
-  lifespan.** Telemetry rows are written when the alarm engine path is
-  exercised in tests, but the live ingestion task starts only when
-  `services.mqtt_consumer.MqttConsumer` is instantiated from
-  `app/main.py`. Tracked as `TODO(backend)` in `app/main.py`.
-- **WS subscriptions broadcast to everyone.** The hub is in-memory and
-  ignores per-asset / per-site filters. Acceptable for the demo; would
-  need a Redis-backed pub/sub for multi-process scaling.
-- **No write-path REST endpoints for hierarchy** (`POST /sites`,
-  `PATCH /assets`, ...). Read endpoints cover the MVP UI.
-- **Energy aggregation in `routes/reports.py` is synthetic.** It does
-  not yet use `time_bucket()` + `last(value, ts)` over the meter
-  cumulative readings. Numbers are illustrative.
-- **Single-node demo only.** No clustering, no TLS termination, no
-  refresh tokens, no password-reset flow.
-- **No metrics exporter.** A `/metrics` Prometheus endpoint is
-  flagged as `TODO(observability)`.
+The MVP is intentionally scoped to a single-node demo that boots from
+`docker compose up`. The items below are the deliberate cut lines
+between the demo and a production deployment, captured here so the
+roadmap is explicit rather than implied.
 
-## Future improvements
+### Reporting and analytics
 
-- Wire the MQTT consumer into the FastAPI lifespan and pass
-  `ws_hub.broadcast` as the broadcast callback.
-- Replace the synthetic energy roll-up with a TimescaleDB
-  `time_bucket()` query against the hypertable.
-- Add MSW-driven integration tests for the alarm-ack flow on the
-  frontend.
-- Swap localStorage JWT for httpOnly cookie auth via a Next.js Route
-  Handler.
-- Add per-asset gauge widgets for pressure / temperature.
-- Promote the contract divergence note to a formal ADR set.
-- Add Prometheus + Grafana side-cars and a `/metrics` exporter.
+- **Continuous aggregates for report queries.** Reports currently scan
+  the raw `telemetry` hypertable, which is fine at MVP cardinality
+  (~50 assets, 5 s tick). The roadmap moves long-window queries onto
+  TimescaleDB continuous aggregates (`telemetry_5m`, `telemetry_1h`)
+  and selects the aggregate table based on the requested date range,
+  keeping report latency flat as data grows.
+- **Counter rollover for energy consumption.** Energy is computed as
+  `MAX(value) - MIN(value)` over the window, which is correct for
+  monotonic meters within a single chunk. The production path uses a
+  `LAG`-based delta sum so meter resets, rollover, and replacement
+  events are handled without inflating consumption.
+- **Site-local timezone reporting.** Report windows are evaluated in
+  UTC today. The `sites.timezone` column is already populated in the
+  data model; the roadmap wires it through the report layer so
+  business-day, business-week, and business-month reports align with
+  each site's local calendar.
+- **Active-during-window alarm semantics.** Alarm reports filter on
+  `opened_at` falling inside the selected window. The roadmap adds an
+  "active during window" mode that also includes alarms opened before
+  the window but resolved (or still open) during it, which is the
+  semantic operations teams expect for shift-handover reports.
+- **Async report jobs for large exports.** CSV export is capped at
+  100,000 rows with `X-Report-Truncated` / `X-Report-Row-Limit`
+  headers so clients can detect truncation deterministically. The
+  roadmap moves large exports to an async job queue with object
+  storage delivery, removing the cap for managers who need full
+  multi-month dumps.
+
+### Platform and operations
+
+- **MQTT consumer lifespan wiring.** The consumer
+  (`services.mqtt_consumer.MqttConsumer`) is implemented and unit
+  tested; production wires it into the FastAPI lifespan with
+  `ws_hub.broadcast` as the fan-out callback so live ingestion starts
+  with the process. Tracked as `TODO(backend)` in `app/main.py`.
+- **Multi-process WebSocket fan-out.** The WS hub is in-memory and
+  broadcasts to all subscribers, which is appropriate for a single
+  worker. Horizontal scaling moves the hub onto Redis pub/sub and
+  honours per-asset / per-site subscription filters.
+- **Hierarchy write endpoints.** Read endpoints cover the MVP UI;
+  `POST /sites`, `PATCH /assets`, and the rest of the write surface
+  are scoped for the admin console iteration.
+- **Auth hardening.** JWT bearer auth with bcrypt covers the demo.
+  Production adds refresh tokens, password reset, and httpOnly cookie
+  delivery via a Next.js Route Handler.
+- **Observability.** Structured JSON logs ship to stdout today. The
+  roadmap adds a `/metrics` Prometheus endpoint and a Grafana side-car
+  for dashboarding (`TODO(observability)`).
+- **High availability.** Single-node compose stack by design. Production
+  introduces Postgres replicas, broker clustering, and TLS termination
+  at the reverse proxy.
 
 ## License
 

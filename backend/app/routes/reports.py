@@ -39,6 +39,11 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 _REPORT_GUARD = roles_at_least("manager")
 _PDF_TITLE = "Industrial EnergyOps Energy Report"
 
+# Hard cap on CSV rows so a single export can't blow up memory or the
+# browser's download. Surfaced to clients via the X-Report-Row-Limit
+# header when truncation actually happens. See docs/API_CONTRACT.md.
+CSV_ROW_LIMIT = 100_000
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -182,9 +187,18 @@ def energy_report_csv(
 
     Columns: ``timestamp, site, area, asset, sensor, metric, value, unit,
     quality``. The CSV is one row per telemetry point so an analyst can
-    reconstruct the trend in their tool of choice. Capped to 100k rows;
-    managers who need more should narrow the window or use the PDF
-    summary.
+    reconstruct the trend in their tool of choice.
+
+    Capped at :data:`CSV_ROW_LIMIT` rows. If the underlying query would
+    return more rows the response is truncated and we surface that
+    explicitly via two headers:
+
+    - ``X-Report-Truncated``: ``true`` / ``false``
+    - ``X-Report-Row-Limit``: numeric cap (only set when truncated)
+
+    Managers who hit the cap should narrow the window or filter by
+    ``site_id`` / ``asset_id``; the PDF summary aggregates the same data
+    without a row cap.
     """
     assets, start_ts, end_ts, _site = _resolve_window(site_id, asset_id, start, end, db, user)
 
@@ -194,8 +208,12 @@ def energy_report_csv(
         ["timestamp", "site", "area", "asset", "sensor", "metric", "value", "unit", "quality"]
     )
 
+    truncated = False
     if assets:
         asset_ids = [a.id for a in assets]
+        # Fetch one extra row so we can detect "would have returned more"
+        # without scanning the whole table. The extra row is dropped
+        # before serialisation.
         stmt = (
             select(
                 Telemetry.ts,
@@ -220,9 +238,13 @@ def energy_report_csv(
                 )
             )
             .order_by(Telemetry.ts.asc())
-            .limit(100_000)
+            .limit(CSV_ROW_LIMIT + 1)
         )
+        rows_written = 0
         for ts, site_name, area_name, asset_name, sensor_label, metric, value, unit, quality in db.execute(stmt).all():
+            if rows_written >= CSV_ROW_LIMIT:
+                truncated = True
+                break
             writer.writerow(
                 [
                     ts.isoformat(),
@@ -236,6 +258,7 @@ def energy_report_csv(
                     str(quality) if quality is not None else "",
                 ]
             )
+            rows_written += 1
 
     payload = buf.getvalue().encode("utf-8")
     _record_report(
@@ -249,10 +272,17 @@ def energy_report_csv(
         size_bytes=len(payload),
     )
 
+    headers = {
+        "Content-Disposition": 'attachment; filename="energy-report.csv"',
+        "X-Report-Truncated": "true" if truncated else "false",
+    }
+    if truncated:
+        headers["X-Report-Row-Limit"] = str(CSV_ROW_LIMIT)
+
     return StreamingResponse(
         iter([payload]),
         media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="energy-report.csv"'},
+        headers=headers,
     )
 @router.get("/energy.pdf")
 def energy_report_pdf(

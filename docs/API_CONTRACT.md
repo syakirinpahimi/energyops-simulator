@@ -231,6 +231,23 @@ GET /api/v1/reports/{report_id}                   -> <Report>
 GET /api/v1/reports/{report_id}/download          -> binary stream
 ```
 
+#### CSV export row cap
+
+`GET /api/v1/reports/energy.csv` is capped at **100,000 rows** to keep
+exports streamable. The response advertises whether truncation
+happened:
+
+| Header                 | Value                                    | When sent          |
+|------------------------|------------------------------------------|--------------------|
+| `X-Report-Truncated`   | `true` / `false`                         | Always             |
+| `X-Report-Row-Limit`   | `100000` (current cap)                   | Only when truncated |
+
+The CSV body itself is unchanged: a single header row followed by data
+rows, no metadata comments. Clients that need the full dataset for a
+large window should narrow the request with `start` / `end` and the
+`site_id` / `asset_id` filters, or fall back to the PDF report (no row
+cap, since it aggregates).
+
 `<Report>`:
 
 ```json

@@ -135,3 +135,69 @@ All configuration is via environment variables. See `.env.example` for the full 
 - TLS termination (assume reverse proxy handles it in production)
 
 These should each have a brief `TODO(future)` in the relevant module so they aren't lost.
+
+## Known limitations and production roadmap
+
+The MVP is scoped to a single-node demo. The items below are the
+deliberate architectural cut lines between the demo and a production
+deployment, captured here so the roadmap is explicit.
+
+### Read-path: continuous aggregates for reports
+
+Reports query the raw `telemetry` hypertable today. At MVP cardinality
+this is fine, but report latency grows linearly with the date range. The
+roadmap routes long-window queries through the existing
+`telemetry_5m` continuous aggregate (and a planned `telemetry_1h`
+companion), with the report layer selecting the aggregate table based
+on the requested range. Raw telemetry is reserved for short windows
+and drill-downs.
+
+### Energy roll-up: counter rollover handling
+
+Energy consumption per asset is currently `MAX(value) - MIN(value)`
+over the window, which is correct for monotonic meters within a chunk
+but mishandles meter resets and counter rollover. The production path
+uses a `LAG`-based delta sum (`SUM(GREATEST(value - LAG(value), 0))`)
+so resets and replacements do not inflate consumption.
+
+### Reporting: site-local timezones
+
+Report windows are evaluated in UTC. The data model already carries
+`sites.timezone` (default `Asia/Kuala_Lumpur`); the roadmap threads it
+through the report layer so business-day, business-week, and
+business-month reports align with each site's local calendar instead
+of the server's clock.
+
+### Reporting: alarm window semantics
+
+Alarm reports filter on `opened_at` falling inside the selected
+window. The roadmap adds an "active during window" mode that also
+includes alarms opened before the window but resolved (or still open)
+during it - the semantic operations teams expect for shift-handover
+reports.
+
+### Reporting: large export delivery
+
+CSV export is capped at 100,000 rows with `X-Report-Truncated` and
+`X-Report-Row-Limit` response headers so clients can detect
+truncation deterministically. The roadmap moves large exports to an
+async report job queue with object-storage delivery, removing the cap
+for managers who need full multi-month dumps without holding the
+request thread open.
+
+### Ingest and fan-out
+
+- Wire `services.mqtt_consumer.MqttConsumer` into the FastAPI lifespan
+  with `ws_hub.broadcast` as the fan-out callback so live ingestion
+  starts with the process.
+- Move the in-memory WS hub onto Redis pub/sub for multi-worker
+  scale-out and honour per-asset / per-site subscription filters.
+
+### Platform
+
+- Refresh tokens, password reset, and httpOnly cookie delivery via a
+  Next.js Route Handler.
+- `/metrics` Prometheus endpoint plus a Grafana side-car
+  (`TODO(observability)`).
+- Postgres replicas, broker clustering, and TLS termination at the
+  reverse proxy for HA deployments.
