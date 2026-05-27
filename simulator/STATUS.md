@@ -24,4 +24,4 @@ Last updated: 2026-05-27 by simulator session
 
 ## Open questions for the architect
 
-- Topic shape: brief says `industrial/{site}/{area}/{asset}/{sensor}` (5 segments), `docs/API_CONTRACT.md` says `energyops/{company}/{site}/{area}/{asset}/{channel}` (6 segments). Simulator currently follows the brief. See `docs/CONTRACT_CHANGES.md`.
+- ~~Topic shape: brief says `industrial/{site}/{area}/{asset}/{sensor}` (5 segments), `docs/API_CONTRACT.md` says `energyops/{company}/{site}/{area}/{asset}/{channel}` (6 segments).~~ **Resolved 2026-05-27** by `docs/adr/0001-mqtt-topic-contract.md`: the five-segment `industrial/...` shape is the canonical contract. `docs/API_CONTRACT.md`, `README.md`, and the simulator config comments have been updated to match.

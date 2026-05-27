@@ -356,10 +356,11 @@ Validation rules in the backend MQTT consumer:
 3. Drop `quality == "bad"` from telemetry inserts but log them.
 4. Idempotent on `(asset_id, sensor_id, ts)`.
 
-> The contract document in `docs/API_CONTRACT.md` originally specified
-> a six-segment `energyops/<company>/...` shape. The implementation
-> follows the five-segment `industrial/...` shape from the brief; the
-> divergence is captured in `docs/CONTRACT_CHANGES.md`.
+> The MQTT topic shape is governed by
+> [`docs/adr/0001-mqtt-topic-contract.md`](docs/adr/0001-mqtt-topic-contract.md).
+> An earlier draft of `docs/API_CONTRACT.md` proposed a six-segment
+> `energyops/<company>/...` shape; the ADR supersedes it in favour of
+> the five-segment `industrial/...` form documented above.
 
 ## Folder tree
 
@@ -437,8 +438,8 @@ What this project demonstrates, beyond "I can wire up React":
   on the simulator gives reviewers a deterministic burst they can run
   in CI without a broker.
 - **Contracts first.** REST shape, MQTT topics, role permissions, and
-  data model all live in `docs/`, and divergences are explicitly
-  tracked in `docs/CONTRACT_CHANGES.md`.
+  data model all live in `docs/`, and architectural decisions are
+  captured as ADRs under `docs/adr/`.
 - **Junior-readable code.** Models follow DDL order, routes are
   one-file-per-resource, services are kept small, and there are no
   bespoke abstractions that a reviewer has to learn before reading

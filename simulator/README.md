@@ -4,12 +4,12 @@ Owner track: `simulator` (see `docs/AGENT_WORKFLOW.md`).
 
 A Python service that publishes synthetic but realistic telemetry to MQTT for every seeded asset. It exists so the dashboard has live data without real plant equipment.
 
-> **Topic note (2026-05-27):** the brief specifies
-> `industrial/{site}/{area}/{asset}/{sensor}` and the simulator follows
-> that. This diverges from `docs/API_CONTRACT.md` § MQTT topic conventions,
-> which uses `energyops/{company}/{site}/{area}/{asset}/{channel}`. The
-> simulator + backend `mqtt_consumer.py` agree on the brief's format. See
-> `docs/CONTRACT_CHANGES.md` for the open contract change request.
+> **Topic shape:** `industrial/{site}/{area}/{asset}/{sensor}` (five
+> segments). Status / heartbeat reuse the sensor slot with reserved
+> `_status` / `_heartbeat` names so a single backend wildcard
+> (`industrial/+/+/+/+`) matches everything. The full contract lives in
+> `docs/API_CONTRACT.md` § MQTT topic conventions, and the decision is
+> recorded in `docs/adr/0001-mqtt-topic-contract.md`.
 
 ## Quick start
 
@@ -142,7 +142,7 @@ python -m app.main
 You should see telemetry flowing in the broker. Check with `mosquitto_sub`:
 
 ```bash
-mosquitto_sub -h localhost -t 'energyops/#' -v
+mosquitto_sub -h localhost -t 'industrial/#' -v
 ```
 
 ## Generator design

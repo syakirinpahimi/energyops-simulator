@@ -413,16 +413,13 @@ def step(
 # ---------------------------------------------------------------------------
 
 
-def topic_for(reading: Reading, *, root: str, company_slug: str = "", channel: str = "telemetry") -> str:
+def topic_for(reading: Reading, *, root: str) -> str:
     """Build the MQTT topic for a telemetry reading.
 
     Layout: ``{root}/{site}/{area}/{asset}/{sensor}`` -- exactly five
     segments so the backend wildcard ``industrial/+/+/+/+`` matches.
-    ``company_slug`` and ``channel`` are accepted for API compatibility
-    with status/heartbeat callers but are not part of the telemetry
-    topic per the brief.
+    The shape is governed by ``docs/adr/0001-mqtt-topic-contract.md``.
     """
-    del company_slug, channel  # not used for telemetry; kept for symmetry
     return "/".join((
         root,
         reading.asset.site_slug,
@@ -432,13 +429,12 @@ def topic_for(reading: Reading, *, root: str, company_slug: str = "", channel: s
     ))
 
 
-def asset_channel_topic(asset: Asset, *, root: str, company_slug: str = "", channel: str) -> str:
+def asset_channel_topic(asset: Asset, *, root: str, channel: str) -> str:
     """Topic for a per-asset (non-sensor) channel like status or heartbeat.
 
     Reuses the sensor slot with a reserved underscore-prefixed name so the
     five-segment wildcard subscription still matches.
     """
-    del company_slug  # not used; kept for symmetry with topic_for
     return "/".join((
         root,
         asset.site_slug,

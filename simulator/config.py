@@ -75,14 +75,12 @@ class Settings:
     mqtt_keepalive: int = 30
 
     # Topic conventions
-    # The brief specifies ``industrial/{site}/{area}/{asset}/{sensor}`` for
-    # telemetry. Status/heartbeat reuse the sensor slot with a reserved
-    # underscore-prefixed name (``_status``/``_heartbeat``) so the backend
-    # wildcard ``industrial/+/+/+/+`` matches every published topic.
-    # NOTE: this diverges from ``docs/API_CONTRACT.md`` § MQTT topic
-    # conventions (which uses ``energyops/{company}/...``). See
-    # ``docs/CONTRACT_CHANGES.md`` for the divergence note awaiting an
-    # architect decision.
+    # ``industrial/{site}/{area}/{asset}/{sensor}`` for telemetry, with
+    # status / heartbeat reusing the sensor slot via reserved
+    # underscore-prefixed names (``_status``/``_heartbeat``) so the
+    # backend wildcard ``industrial/+/+/+/+`` matches every published
+    # topic. The decision is recorded in
+    # ``docs/adr/0001-mqtt-topic-contract.md``.
     topic_root: str = "industrial"
 
     # Tick / fault behaviour
