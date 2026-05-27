@@ -144,9 +144,19 @@ export interface AssetSnapshot {
 export interface ReportTopAsset {
   asset_id: string;
   asset_name: string;
+  asset_type?: string;
   energy_kwh: number;
   avg_power_kw: number;
   peak_kw: number;
+}
+
+export interface EnergyAlarmSummary {
+  active: number;
+  acknowledged: number;
+  resolved: number;
+  total: number;
+  by_status: { active: number; acknowledged: number; resolved: number };
+  by_severity: { info: number; warning: number; critical: number };
 }
 
 export interface EnergySummary {
@@ -157,7 +167,7 @@ export interface EnergySummary {
   total_kwh: number;
   peak_kw: number;
   top_assets: ReportTopAsset[];
-  alarms: { active: number; acknowledged: number; resolved: number; total: number };
+  alarms: EnergyAlarmSummary;
   site: { id: string; name: string } | null;
   asset_id: string | null;
 }

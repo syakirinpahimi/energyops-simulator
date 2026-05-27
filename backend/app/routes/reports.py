@@ -25,8 +25,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import roles_at_least
-from app.models import Alarm, Area, Asset, Report, Sensor, Site, Telemetry, User
+from app.models import Area, Asset, Report, Sensor, Site, Telemetry, User
 from app.services.audit import write_audit
+from app.services.report_service import (
+    AlarmSummary,
+    EnergySummary,
+    compute_alarm_summary,
+    compute_energy_summary,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -82,64 +88,9 @@ def _energy_summary(
     assets: List[Asset],
     start_ts: datetime,
     end_ts: datetime,
-) -> Dict[str, Any]:
-    """Compute summary numbers used by the cards + PDF.
-
-    ``avg(power_kw) * window_hours`` is a coarse but defensible energy
-    estimate; we also surface ``peak_kw`` directly. ``top_assets`` is the
-    five largest energy consumers in the window.
-    """
-    duration_hours = max((end_ts - start_ts).total_seconds() / 3600.0, 0.0)
-    out: Dict[str, Any] = {
-        "from": start_ts.isoformat(),
-        "to": end_ts.isoformat(),
-        "duration_hours": round(duration_hours, 3),
-        "asset_count": len(assets),
-        "total_kwh": 0.0,
-        "peak_kw": 0.0,
-        "top_assets": [],
-    }
-    if not assets or duration_hours == 0.0:
-        return out
-
-    asset_ids = [a.id for a in assets]
-    name_by_id = {a.id: a.name for a in assets}
-
-    stmt = (
-        select(
-            Telemetry.asset_id,
-            func.avg(Telemetry.value),
-            func.max(Telemetry.value),
-        )
-        .where(
-            and_(
-                Telemetry.asset_id.in_(asset_ids),
-                Telemetry.metric == "power_kw",
-                Telemetry.ts >= start_ts,
-                Telemetry.ts < end_ts,
-            )
-        )
-        .group_by(Telemetry.asset_id)
-    )
-    per_asset: List[Tuple[UUID, float, float]] = []
-    for aid, avg_kw, max_kw in db.execute(stmt).all():
-        per_asset.append((aid, float(avg_kw or 0.0), float(max_kw or 0.0)))
-
-    total_kwh = 0.0
-    peak_kw = 0.0
-    rows: List[Dict[str, Any]] = []
-    for aid, avg_kw, max_kw in per_asset:
-        kwh = avg_kw * duration_hours
-        total_kwh += kwh
-        if max_kw > peak_kw:
-            peak_kw = max_kw
-        rows.append({"asset_id": str(aid), "asset_name": name_by_id.get(aid, "?"), "energy_kwh": round(kwh, 2), "avg_power_kw": round(avg_kw, 3), "peak_kw": round(max_kw, 3)})
-
-    rows.sort(key=lambda r: r["energy_kwh"], reverse=True)
-    out["total_kwh"] = round(total_kwh, 2)
-    out["peak_kw"] = round(peak_kw, 3)
-    out["top_assets"] = rows[:5]
-    return out
+) -> EnergySummary:
+    """Thin wrapper kept so route handlers and tests can share one symbol."""
+    return compute_energy_summary(db, assets, start_ts, end_ts)
 
 
 def _alarm_summary(
@@ -147,29 +98,9 @@ def _alarm_summary(
     assets: List[Asset],
     start_ts: datetime,
     end_ts: datetime,
-) -> Dict[str, int]:
-    """Count alarms opened in the window by state."""
-    if not assets:
-        return {"active": 0, "acknowledged": 0, "resolved": 0, "total": 0}
-    asset_ids = [a.id for a in assets]
-    rows = db.execute(
-        select(Alarm.state, func.count())
-        .where(
-            and_(
-                Alarm.asset_id.in_(asset_ids),
-                Alarm.opened_at >= start_ts,
-                Alarm.opened_at < end_ts,
-            )
-        )
-        .group_by(Alarm.state)
-    ).all()
-    by_state = {state: int(n) for state, n in rows}
-    return {
-        "active": by_state.get("OPEN", 0),
-        "acknowledged": by_state.get("ACK", 0),
-        "resolved": by_state.get("RESOLVED", 0),
-        "total": sum(by_state.values()),
-    }
+) -> AlarmSummary:
+    """Thin wrapper around the service so the routes stay flat."""
+    return compute_alarm_summary(db, assets, start_ts, end_ts)
 
 
 def _record_report(
@@ -230,11 +161,13 @@ def energy_report_summary(
     on every filter change.
     """
     assets, start_ts, end_ts, site = _resolve_window(site_id, asset_id, start, end, db, user)
-    summary = _energy_summary(db, assets, start_ts, end_ts)
-    summary["alarms"] = _alarm_summary(db, assets, start_ts, end_ts)
-    summary["site"] = {"id": str(site.id), "name": site.name} if site else None
-    summary["asset_id"] = str(asset_id) if asset_id else None
-    return summary
+    energy = _energy_summary(db, assets, start_ts, end_ts)
+    alarms = _alarm_summary(db, assets, start_ts, end_ts)
+    payload = energy.as_summary_dict()
+    payload["alarms"] = alarms.as_dict()
+    payload["site"] = {"id": str(site.id), "name": site.name} if site else None
+    payload["asset_id"] = str(asset_id) if asset_id else None
+    return payload
 
 @router.get("/energy.csv")
 def energy_report_csv(
@@ -247,16 +180,19 @@ def energy_report_csv(
 ) -> StreamingResponse:
     """Per-reading CSV download.
 
-    Columns: ``timestamp, site, area, asset, sensor, metric, value, unit``.
-    The CSV is one row per telemetry point so an analyst can reconstruct
-    the trend in their tool of choice. Capped to 100k rows; managers who
-    need more should narrow the window or use the PDF summary.
+    Columns: ``timestamp, site, area, asset, sensor, metric, value, unit,
+    quality``. The CSV is one row per telemetry point so an analyst can
+    reconstruct the trend in their tool of choice. Capped to 100k rows;
+    managers who need more should narrow the window or use the PDF
+    summary.
     """
     assets, start_ts, end_ts, _site = _resolve_window(site_id, asset_id, start, end, db, user)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["timestamp", "site", "area", "asset", "sensor", "metric", "value", "unit"])
+    writer.writerow(
+        ["timestamp", "site", "area", "asset", "sensor", "metric", "value", "unit", "quality"]
+    )
 
     if assets:
         asset_ids = [a.id for a in assets]
@@ -270,6 +206,7 @@ def energy_report_csv(
                 Telemetry.metric,
                 Telemetry.value,
                 Telemetry.unit,
+                Telemetry.quality,
             )
             .join(Asset, Asset.id == Telemetry.asset_id)
             .join(Area, Area.id == Asset.area_id)
@@ -285,7 +222,7 @@ def energy_report_csv(
             .order_by(Telemetry.ts.asc())
             .limit(100_000)
         )
-        for ts, site_name, area_name, asset_name, sensor_label, metric, value, unit in db.execute(stmt).all():
+        for ts, site_name, area_name, asset_name, sensor_label, metric, value, unit, quality in db.execute(stmt).all():
             writer.writerow(
                 [
                     ts.isoformat(),
@@ -296,6 +233,7 @@ def energy_report_csv(
                     metric,
                     f"{float(value):.6g}",
                     unit or "",
+                    str(quality) if quality is not None else "",
                 ]
             )
 
@@ -340,8 +278,9 @@ def energy_report_pdf(
     )
 
     assets, start_ts, end_ts, site = _resolve_window(site_id, asset_id, start, end, db, user)
-    summary = _energy_summary(db, assets, start_ts, end_ts)
+    energy = _energy_summary(db, assets, start_ts, end_ts)
     alarms = _alarm_summary(db, assets, start_ts, end_ts)
+    top_assets = energy.top_assets()
     generated_at = datetime.now(timezone.utc)
 
     buf = io.BytesIO()
@@ -363,7 +302,7 @@ def energy_report_pdf(
         ["Site", site_label],
         ["Date range", f"{start_ts.isoformat()}  ->  {end_ts.isoformat()}"],
         ["Generated", generated_at.isoformat()],
-        ["Assets", str(summary["asset_count"])],
+        ["Assets", str(energy.asset_count)],
     ]
     meta_table = Table(meta_rows, hAlign="LEFT", colWidths=[35 * mm, 130 * mm])
     meta_table.setStyle(
@@ -377,12 +316,20 @@ def energy_report_pdf(
     )
     story.extend([Spacer(1, 6), meta_table, Spacer(1, 12)])
 
+    sev = alarms.by_severity
     totals_rows = [
-        ["Total energy", f"{summary['total_kwh']:.2f} kWh"],
-        ["Peak power", f"{summary['peak_kw']:.2f} kW"],
+        ["Total energy", f"{energy.total_kwh:.2f} kWh"],
+        ["Peak power", f"{energy.peak_kw:.2f} kW"],
         [
-            "Alarms",
-            f"active {alarms['active']} / acknowledged {alarms['acknowledged']} / resolved {alarms['resolved']}",
+            "Alarms (status)",
+            f"active {alarms.by_status.get('active', 0)} / "
+            f"acknowledged {alarms.by_status.get('acknowledged', 0)} / "
+            f"resolved {alarms.by_status.get('resolved', 0)}",
+        ],
+        [
+            "Alarms (severity)",
+            f"info {sev.get('info', 0)} / warning {sev.get('warning', 0)} / "
+            f"critical {sev.get('critical', 0)}",
         ],
     ]
     totals_table = Table(totals_rows, hAlign="LEFT", colWidths=[35 * mm, 130 * mm])
@@ -402,14 +349,14 @@ def energy_report_pdf(
 
     story.append(Paragraph("Top energy-consuming assets", styles["Heading2"]))
     top_data = [["Rank", "Asset", "Energy (kWh)", "Avg kW", "Peak kW"]]
-    for idx, row in enumerate(summary["top_assets"], start=1):
+    for idx, row in enumerate(top_assets, start=1):
         top_data.append(
             [
                 str(idx),
-                row["asset_name"],
-                f"{row['energy_kwh']:.2f}",
-                f"{row['avg_power_kw']:.2f}",
-                f"{row['peak_kw']:.2f}",
+                row.asset_name,
+                f"{row.energy_kwh:.2f}",
+                f"{row.avg_power_kw:.2f}",
+                f"{row.peak_kw:.2f}",
             ]
         )
     if len(top_data) == 1:
