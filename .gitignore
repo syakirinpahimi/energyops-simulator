@@ -1,0 +1,43 @@
+# --- env / secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python (backend, simulator) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / Next.js (frontend) ---
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# --- Docker ---
+*.pid
+
+# --- generated artefacts ---
+reports/*.csv
+reports/*.pdf
+!reports/.gitkeep
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
