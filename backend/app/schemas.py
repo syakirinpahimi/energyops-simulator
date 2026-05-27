@@ -41,7 +41,10 @@ class ErrorEnvelope(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Plain string (not EmailStr) so demo accounts on `.local` (a reserved
+    # TLD per email-validator >= 2.2) are accepted. The seed canonicalises
+    # emails to lowercase; the auth route does the same on login.
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1)
 
 
